@@ -67,6 +67,11 @@ Flow:
   - upload size limit (80MB)
   - temporary workspace cleanup
   - logging + exception handling
+- Optional **near-duplicate exclusion**: compares each slice to earlier kept slices using (1) peak-normalized waveform with small time alignment (best Pearson |r|), and (2) **spectral cosine** on log magnitude bins so similar samples still match when the time-domain correlation is a bit low. Disabled by default so intentional repeats are kept unless you enable it in Advanced settings.
+
+**Dedupe tuning — remove more duplicates:** lower **waveform |r|** (e.g. `0.82`–`0.86`), lower **spectral match** (e.g. `0.85`–`0.88`), lower **min waveform for spectral rule** slightly (e.g. `0.68`–`0.72`), and/or lower **envelope prefilter** (e.g. `0.50`) so more pairs are fully compared. **If different hits get merged:** raise waveform and spectral thresholds and/or raise **envelope prefilter** to reduce comparisons.
+
+**If near-dupes differ a lot in length:** raise **max length ratio**. **If alignment is off:** raise **max time align (ms)** or **compare points**.
 
 ## Run locally (without Docker)
 
@@ -112,12 +117,21 @@ python -m pytest -q
 - `padding_ms` (int, default `5`)
 - `normalize` (bool, default `false`)
 - `min_peak_db` (float, default `-60`)
+- `dedupe` (bool, default `false`)
+- `dedupe_correlation_threshold` (float, default `0.87`, range `0.5`–`1`) — waveform Pearson |r| (lower = more aggressive)
+- `dedupe_max_length_ratio` (float, default `1.5`, min `1`) — only compare clips if `max(len)/min(len)` is within this ratio
+- `dedupe_compare_points` (int, default `2048`, range `128`–`32768`) — resample both clips to `min(this, shorter clip length)` samples for comparison
+- `dedupe_max_lag_ms` (float, default `10`, range `0`–`200`) — try aligning copies by shifting up to this many milliseconds on the resampled grid
+- `dedupe_prefilter_threshold` (float, default `0.58`, range `0.35`–`0.95`) — envelope fingerprint gate before full compare (lower = more aggressive)
+- `dedupe_spectral_threshold` (float, default `0.90`, range `0.5`–`1`) — spectral cosine threshold for the secondary duplicate rule
+- `dedupe_spectral_min_waveform` (float, default `0.74`, range `0.5`–`0.99`) — minimum waveform |r| when using the spectral rule
 
 Response:
 - `application/zip` download (`one_shots.zip`)
 - headers include:
   - `X-Detected-Slices`
   - `X-Exported-Filenames`
+  - `X-Discarded-Duplicates` (count dropped as duplicates when `dedupe` is enabled)
 
 ## Extensibility notes
 

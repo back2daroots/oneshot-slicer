@@ -4,6 +4,7 @@ const statusEl = document.getElementById("status");
 const processBtn = document.getElementById("process-btn");
 const resultEl = document.getElementById("result");
 const sliceCountEl = document.getElementById("slice-count");
+const dedupeInfoEl = document.getElementById("dedupe-info");
 const filenamesEl = document.getElementById("filenames");
 const downloadLink = document.getElementById("download-link");
 const waveformCanvas = document.getElementById("waveform");
@@ -19,6 +20,8 @@ function setStatus(message, isError = false) {
 function resetResult() {
   resultEl.classList.add("hidden");
   sliceCountEl.textContent = "";
+  dedupeInfoEl.textContent = "";
+  dedupeInfoEl.classList.add("hidden");
   filenamesEl.textContent = "";
   if (currentObjectUrl) {
     URL.revokeObjectURL(currentObjectUrl);
@@ -93,7 +96,7 @@ form.addEventListener("submit", async (event) => {
 
   const settings = new FormData(form);
   for (const [key, value] of settings.entries()) {
-    if (key === "normalize") {
+    if (key === "normalize" || key === "dedupe") {
       formData.append(key, "true");
     } else if (typeof value === "string") {
       formData.append(key, value);
@@ -101,6 +104,9 @@ form.addEventListener("submit", async (event) => {
   }
   if (!settings.has("normalize")) {
     formData.append("normalize", "false");
+  }
+  if (!settings.has("dedupe")) {
+    formData.append("dedupe", "false");
   }
 
   processBtn.disabled = true;
@@ -120,12 +126,19 @@ form.addEventListener("submit", async (event) => {
 
     const blob = await response.blob();
     const sliceCount = response.headers.get("X-Detected-Slices") || "Unknown";
+    const discardedDupes = response.headers.get("X-Discarded-Duplicates");
     const filenames = response.headers.get("X-Exported-Filenames") || "";
 
     currentObjectUrl = URL.createObjectURL(blob);
     downloadLink.href = currentObjectUrl;
     resultEl.classList.remove("hidden");
     sliceCountEl.textContent = `Detected and exported ${sliceCount} slice(s).`;
+    if (discardedDupes !== null && discardedDupes !== "" && Number(discardedDupes) > 0) {
+      dedupeInfoEl.textContent = `Excluded as near-duplicates: ${discardedDupes}`;
+      dedupeInfoEl.classList.remove("hidden");
+    } else {
+      dedupeInfoEl.classList.add("hidden");
+    }
     filenamesEl.textContent = filenames ? `Files: ${filenames}` : "";
 
     setStatus("Done. Your ZIP archive is ready.");

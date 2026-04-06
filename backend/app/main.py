@@ -61,11 +61,54 @@ async def process_wav(
     padding_ms: int = Form(5),
     normalize: bool = Form(False),
     min_peak_db: float = Form(-60.0),
+    dedupe: bool = Form(False),
+    dedupe_correlation_threshold: float = Form(0.87),
+    dedupe_max_length_ratio: float = Form(1.5),
+    dedupe_compare_points: int = Form(2048),
+    dedupe_max_lag_ms: float = Form(10.0),
+    dedupe_prefilter_threshold: float = Form(0.58),
+    dedupe_spectral_threshold: float = Form(0.90),
+    dedupe_spectral_min_waveform: float = Form(0.74),
 ) -> FileResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename.")
     if not _is_supported_wav(file):
         raise HTTPException(status_code=400, detail="Only WAV files are supported.")
+    if not 0.5 < dedupe_correlation_threshold <= 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="dedupe_correlation_threshold must be between 0.5 and 1.0.",
+        )
+    if dedupe_max_length_ratio < 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="dedupe_max_length_ratio must be at least 1.0.",
+        )
+    if dedupe_compare_points < 128 or dedupe_compare_points > 32768:
+        raise HTTPException(
+            status_code=400,
+            detail="dedupe_compare_points must be between 128 and 32768.",
+        )
+    if dedupe_max_lag_ms < 0 or dedupe_max_lag_ms > 200:
+        raise HTTPException(
+            status_code=400,
+            detail="dedupe_max_lag_ms must be between 0 and 200.",
+        )
+    if dedupe_prefilter_threshold < 0.35 or dedupe_prefilter_threshold > 0.95:
+        raise HTTPException(
+            status_code=400,
+            detail="dedupe_prefilter_threshold must be between 0.35 and 0.95.",
+        )
+    if dedupe_spectral_threshold < 0.5 or dedupe_spectral_threshold > 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="dedupe_spectral_threshold must be between 0.5 and 1.0.",
+        )
+    if dedupe_spectral_min_waveform < 0.5 or dedupe_spectral_min_waveform > 0.99:
+        raise HTTPException(
+            status_code=400,
+            detail="dedupe_spectral_min_waveform must be between 0.5 and 0.99.",
+        )
 
     contents = await file.read()
     if len(contents) > MAX_UPLOAD_SIZE_BYTES:
@@ -81,6 +124,14 @@ async def process_wav(
         padding_ms=padding_ms,
         normalize=normalize,
         min_peak_db=min_peak_db,
+        dedupe=dedupe,
+        dedupe_correlation_threshold=dedupe_correlation_threshold,
+        dedupe_max_length_ratio=dedupe_max_length_ratio,
+        dedupe_compare_points=dedupe_compare_points,
+        dedupe_max_lag_ms=dedupe_max_lag_ms,
+        dedupe_prefilter_threshold=dedupe_prefilter_threshold,
+        dedupe_spectral_threshold=dedupe_spectral_threshold,
+        dedupe_spectral_min_waveform=dedupe_spectral_min_waveform,
     )
 
     logger.info("Processing uploaded file '%s' with config: %s", file.filename, config)
@@ -93,7 +144,7 @@ async def process_wav(
 
     try:
         input_wav.write_bytes(contents)
-        exported_files = segment_wav_file(input_wav, slices_dir, config)
+        exported_files, discarded_dupes = segment_wav_file(input_wav, slices_dir, config)
         if not exported_files:
             raise HTTPException(
                 status_code=422,
@@ -110,6 +161,7 @@ async def process_wav(
         headers = {
             "X-Detected-Slices": str(len(exported_files)),
             "X-Exported-Filenames": ",".join(path.name for path in exported_files),
+            "X-Discarded-Duplicates": str(discarded_dupes),
         }
 
         response = FileResponse(

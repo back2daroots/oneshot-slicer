@@ -46,6 +46,38 @@
               <input name="normalize" type="checkbox" />
               <span>Normalize each exported clip</span>
             </label>
+            <label class="checkbox">
+              <input name="dedupe" type="checkbox" />
+              <span>Exclude near-duplicate slices (waveform match)</span>
+            </label>
+            <label class="field">
+              <span>Dedupe waveform |r| (0.5–1, lower = stricter / more drops)</span>
+              <input name="dedupe_correlation_threshold" type="number" value="0.87" min="0.5" max="1" step="0.005" />
+            </label>
+            <label class="field">
+              <span>Dedupe spectral match (0.5–1, lower = stricter)</span>
+              <input name="dedupe_spectral_threshold" type="number" value="0.90" min="0.5" max="1" step="0.005" />
+            </label>
+            <label class="field">
+              <span>Dedupe min waveform for spectral rule (0.5–0.99)</span>
+              <input name="dedupe_spectral_min_waveform" type="number" value="0.74" min="0.5" max="0.99" step="0.01" />
+            </label>
+            <label class="field">
+              <span>Dedupe envelope prefilter (0.35–0.95, lower = more candidates checked)</span>
+              <input name="dedupe_prefilter_threshold" type="number" value="0.58" min="0.35" max="0.95" step="0.01" />
+            </label>
+            <label class="field">
+              <span>Dedupe max length ratio (≥1, higher = allow more trim mismatch)</span>
+              <input name="dedupe_max_length_ratio" type="number" value="1.5" min="1" max="3" step="0.05" />
+            </label>
+            <label class="field">
+              <span>Dedupe compare points (128–32768)</span>
+              <input name="dedupe_compare_points" type="number" value="2048" min="128" max="32768" step="256" />
+            </label>
+            <label class="field">
+              <span>Dedupe max time align (ms, 0–200)</span>
+              <input name="dedupe_max_lag_ms" type="number" value="10" min="0" max="200" step="1" />
+            </label>
           </div>
         </details>
 
@@ -58,6 +90,7 @@
       <section id="result" class="card hidden">
         <h2>Result</h2>
         <p id="slice-count"></p>
+        <p id="dedupe-info" class="small hidden"></p>
         <p id="filenames" class="small"></p>
         <a id="download-link" class="button" download="one_shots.zip">Download ZIP</a>
       </section>
