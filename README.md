@@ -2,14 +2,24 @@
 
 Local-first web app that accepts one WAV file containing multiple one-shot sounds, detects slices using silence/transient-style envelope analysis, exports each slice as an individual WAV, and returns a ZIP for download.
 
-## Repository
+## Publish to GitHub
+
+The project already has a local Git history (`main`). To upload it:
+
+1. On GitHub, create a **new empty** repository (no README, no `.gitignore`, no license) named e.g. `oneshot-slicer`.
+2. From this folder on your machine:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/oneshot-slicer.git
-cd oneshot-slicer
+cd /Users/rutz/Documents/PROG/PROJECTS/oneshot-slicer
+git remote add origin git@github.com:YOUR_GITHUB_USER/oneshot-slicer.git
+# or HTTPS:
+# git remote add origin https://github.com/YOUR_GITHUB_USER/oneshot-slicer.git
+git push -u origin main
 ```
 
-Replace `YOUR_USERNAME` with the GitHub owner after you create the remote (or use SSH: `git@github.com:YOUR_USERNAME/oneshot-slicer.git`).
+Replace `YOUR_GITHUB_USER` with your GitHub username or organization.
+
+If you use [GitHub CLI](https://cli.github.com/): `gh repo create oneshot-slicer --public --source=. --remote=origin --push`
 
 ## License
 
