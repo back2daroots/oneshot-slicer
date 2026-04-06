@@ -1,0 +1,30 @@
+.DS_Store
+
+# Python
+backend/.venv/
+backend/.venv.bak/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Tests / tools
+backend/.pytest_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*~
+
+# Env files (keep secrets out of the repo)
+.env
+.env.*

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>One-shot WAV Slicer</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>One-shot WAV Slicer</h1>
+      <p class="subtitle">
+        Upload one WAV file with one-shots separated by silence and download a ZIP with sliced WAV files.
+      </p>
+
+      <form id="upload-form" class="card">
+        <label class="field">
+          <span>WAV file</span>
+          <input id="wav-file" type="file" accept=".wav,audio/wav" required />
+        </label>
+
+        <details>
+          <summary>Advanced settings</summary>
+          <div class="grid">
+            <label class="field">
+              <span>Silence threshold (dBFS)</span>
+              <input name="silence_threshold_db" type="number" value="-40" step="1" />
+            </label>
+            <label class="field">
+              <span>Min silence (ms)</span>
+              <input name="min_silence_ms" type="number" value="80" min="1" />
+            </label>
+            <label class="field">
+              <span>Min clip length (ms)</span>
+              <input name="min_clip_ms" type="number" value="25" min="1" />
+            </label>
+            <label class="field">
+              <span>Padding (ms)</span>
+              <input name="padding_ms" type="number" value="5" min="0" />
+            </label>
+            <label class="field">
+              <span>Min peak level (dBFS)</span>
+              <input name="min_peak_db" type="number" value="-60" step="1" />
+            </label>
+            <label class="checkbox">
+              <input name="normalize" type="checkbox" />
+              <span>Normalize each exported clip</span>
+            </label>
+          </div>
+        </details>
+
+        <canvas id="waveform" width="960" height="140"></canvas>
+        <div id="status" class="status">Choose a WAV file to begin.</div>
+
+        <button id="process-btn" type="submit">Slice and Build ZIP</button>
+      </form>
+
+      <section id="result" class="card hidden">
+        <h2>Result</h2>
+        <p id="slice-count"></p>
+        <p id="filenames" class="small"></p>
+        <a id="download-link" class="button" download="one_shots.zip">Download ZIP</a>
+      </section>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
