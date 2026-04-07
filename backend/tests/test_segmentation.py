@@ -1,6 +1,13 @@
 import numpy as np
 
-from app.services.segmentation import SegmentationConfig, dedupe_slice_ranges, detect_slices
+from app.services.segmentation import (
+    SegmentationConfig,
+    _build_auto_filename,
+    _classify_sound_family,
+    _extract_features,
+    dedupe_slice_ranges,
+    detect_slices,
+)
 
 
 def _make_tone(duration_s: float, sample_rate: int, freq: float = 220.0, amp: float = 0.5) -> np.ndarray:
@@ -96,3 +103,19 @@ def test_dedupe_keeps_distinct_slices() -> None:
     kept, discarded = dedupe_slice_ranges(audio, sr, ranges, dedupe_cfg)
     assert discarded == 0
     assert len(kept) == 2
+
+
+def test_auto_name_builder_format() -> None:
+    assert _build_auto_filename("kick", "dark", 128, 1) == "kick_dark_128ms_001.wav"
+
+
+def test_classifier_distinguishes_kick_and_hat_like_tones() -> None:
+    sr = 44100
+    kickish = _make_tone(0.12, sr, freq=70, amp=0.9)
+    hatish = _make_tone(0.05, sr, freq=7000, amp=0.7)
+
+    kick_label = _classify_sound_family(_extract_features(kickish, sr))
+    hat_label = _classify_sound_family(_extract_features(hatish, sr))
+
+    assert kick_label in {"kick", "tom"}
+    assert hat_label in {"hat", "clave", "perc"}

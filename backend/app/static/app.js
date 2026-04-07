@@ -5,6 +5,7 @@ const processBtn = document.getElementById("process-btn");
 const resultEl = document.getElementById("result");
 const sliceCountEl = document.getElementById("slice-count");
 const dedupeInfoEl = document.getElementById("dedupe-info");
+const labelsInfoEl = document.getElementById("labels-info");
 const filenamesEl = document.getElementById("filenames");
 const downloadLink = document.getElementById("download-link");
 const waveformCanvas = document.getElementById("waveform");
@@ -22,6 +23,8 @@ function resetResult() {
   sliceCountEl.textContent = "";
   dedupeInfoEl.textContent = "";
   dedupeInfoEl.classList.add("hidden");
+  labelsInfoEl.textContent = "";
+  labelsInfoEl.classList.add("hidden");
   filenamesEl.textContent = "";
   if (currentObjectUrl) {
     URL.revokeObjectURL(currentObjectUrl);
@@ -127,6 +130,7 @@ form.addEventListener("submit", async (event) => {
     const blob = await response.blob();
     const sliceCount = response.headers.get("X-Detected-Slices") || "Unknown";
     const discardedDupes = response.headers.get("X-Discarded-Duplicates");
+    const labelsCsv = response.headers.get("X-Detected-Labels") || "";
     const filenames = response.headers.get("X-Exported-Filenames") || "";
 
     currentObjectUrl = URL.createObjectURL(blob);
@@ -138,6 +142,21 @@ form.addEventListener("submit", async (event) => {
       dedupeInfoEl.classList.remove("hidden");
     } else {
       dedupeInfoEl.classList.add("hidden");
+    }
+    if (labelsCsv) {
+      const labels = labelsCsv.split(",").filter(Boolean);
+      const counts = labels.reduce((acc, label) => {
+        acc[label] = (acc[label] || 0) + 1;
+        return acc;
+      }, {});
+      const summary = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, count]) => `${label}: ${count}`)
+        .join(", ");
+      labelsInfoEl.textContent = summary ? `Detected types: ${summary}` : "";
+      labelsInfoEl.classList.toggle("hidden", !summary);
+    } else {
+      labelsInfoEl.classList.add("hidden");
     }
     filenamesEl.textContent = filenames ? `Files: ${filenames}` : "";
 

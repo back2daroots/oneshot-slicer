@@ -144,7 +144,7 @@ async def process_wav(
 
     try:
         input_wav.write_bytes(contents)
-        exported_files, discarded_dupes = segment_wav_file(input_wav, slices_dir, config)
+        exported_files, discarded_dupes, labels = segment_wav_file(input_wav, slices_dir, config)
         if not exported_files:
             raise HTTPException(
                 status_code=422,
@@ -162,6 +162,7 @@ async def process_wav(
             "X-Detected-Slices": str(len(exported_files)),
             "X-Exported-Filenames": ",".join(path.name for path in exported_files),
             "X-Discarded-Duplicates": str(discarded_dupes),
+            "X-Detected-Labels": ",".join(labels),
         }
 
         response = FileResponse(

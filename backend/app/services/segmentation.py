@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import soundfile as sf
@@ -104,6 +104,91 @@ def _clip_to_mono_vector(clip: np.ndarray) -> np.ndarray:
     if clip.ndim == 1:
         return clip.astype(np.float64, copy=False)
     return np.mean(clip, axis=1, dtype=np.float64)
+
+
+def _extract_features(mono: np.ndarray, sample_rate: int) -> Dict[str, float]:
+    n = int(mono.shape[0])
+    if n == 0:
+        return {
+            "duration_ms": 0.0,
+            "zcr": 0.0,
+            "centroid_norm": 0.0,
+            "low_ratio": 0.0,
+            "mid_ratio": 0.0,
+            "high_ratio": 0.0,
+            "crest": 0.0,
+        }
+
+    duration_ms = (n * 1000.0) / float(sample_rate)
+    zc = np.mean(np.abs(np.diff(np.signbit(mono).astype(np.int8))))
+    rms = float(np.sqrt(np.mean(mono * mono)) + 1e-12)
+    peak = float(np.max(np.abs(mono)) + 1e-12)
+    crest = peak / rms
+
+    windowed = mono * np.hanning(n)
+    spectrum = np.abs(np.fft.rfft(windowed))
+    freqs = np.fft.rfftfreq(n, 1.0 / sample_rate)
+    spec_sum = float(np.sum(spectrum))
+    centroid_hz = 0.0 if spec_sum < 1e-12 else float(np.sum(freqs * spectrum) / spec_sum)
+    nyquist = max(1.0, sample_rate / 2.0)
+    centroid_norm = centroid_hz / nyquist
+
+    low = float(np.sum(spectrum[freqs < 220.0]))
+    mid = float(np.sum(spectrum[(freqs >= 220.0) & (freqs < 2500.0)]))
+    high = float(np.sum(spectrum[freqs >= 2500.0]))
+    total = max(1e-12, low + mid + high)
+
+    return {
+        "duration_ms": duration_ms,
+        "zcr": float(zc),
+        "centroid_norm": float(centroid_norm),
+        "low_ratio": low / total,
+        "mid_ratio": mid / total,
+        "high_ratio": high / total,
+        "crest": float(crest),
+    }
+
+
+def _classify_sound_family(features: Dict[str, float]) -> str:
+    dur = features["duration_ms"]
+    zcr = features["zcr"]
+    centroid = features["centroid_norm"]
+    low = features["low_ratio"]
+    mid = features["mid_ratio"]
+    high = features["high_ratio"]
+    crest = features["crest"]
+
+    if dur > 550 and high > 0.42 and zcr > 0.12:
+        return "noise"
+    if dur > 450 and (low + mid) > 0.78 and zcr < 0.11:
+        return "pad"
+    if low > 0.58 and centroid < 0.18 and dur < 450:
+        return "kick"
+    if high > 0.56 and zcr > 0.10 and dur < 280:
+        return "hat"
+    if low > 0.36 and low < 0.62 and centroid < 0.30 and dur < 520:
+        return "tom"
+    if high > 0.43 and dur < 140 and crest > 4.0:
+        return "clave"
+    if mid > 0.40 and zcr > 0.06 and dur < 420:
+        return "snare"
+    if dur > 500:
+        return "pad"
+    return "perc"
+
+
+def _brightness_tag(features: Dict[str, float]) -> str:
+    centroid = features["centroid_norm"]
+    high = features["high_ratio"]
+    if centroid > 0.32 or high > 0.52:
+        return "bright"
+    if centroid < 0.16 and high < 0.30:
+        return "dark"
+    return "mid"
+
+
+def _build_auto_filename(label: str, brightness: str, duration_ms: int, idx: int) -> str:
+    return f"{label}_{brightness}_{duration_ms:03d}ms_{idx:03d}.wav"
 
 
 def _waveform_correlation(a: np.ndarray, b: np.ndarray) -> float:
@@ -275,7 +360,7 @@ def segment_wav_file(
     input_wav_path: Path,
     output_dir: Path,
     config: SegmentationConfig,
-) -> Tuple[List[Path], int]:
+) -> Tuple[List[Path], int, List[str]]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     data, sample_rate = sf.read(str(input_wav_path), always_2d=True, dtype="float32")
@@ -284,17 +369,25 @@ def segment_wav_file(
     ranges, discarded_dupes = dedupe_slice_ranges(data, sample_rate, ranges, config)
 
     exported: List[Path] = []
+    labels: List[str] = []
     for idx, segment in enumerate(ranges, start=1):
         clip = data[segment.start : segment.end]
         if clip.shape[0] == 0:
             continue
+
+        mono = _clip_to_mono_vector(clip)
+        features = _extract_features(mono, sample_rate)
+        label = _classify_sound_family(features)
+        brightness = _brightness_tag(features)
+        duration_ms = int(round(features["duration_ms"]))
 
         if config.normalize:
             peak = float(np.max(np.abs(clip)))
             if peak > 0:
                 clip = np.clip(clip / peak * 0.98, -1.0, 1.0)
 
-        out_path = output_dir / f"shot_{idx:03d}.wav"
+        out_name = _build_auto_filename(label, brightness, duration_ms, idx)
+        out_path = output_dir / out_name
         sf.write(
             str(out_path),
             clip,
@@ -303,5 +396,6 @@ def segment_wav_file(
             subtype=info.subtype if info.subtype else None,
         )
         exported.append(out_path)
+        labels.append(label)
 
-    return exported, discarded_dupes
+    return exported, discarded_dupes, labels

@@ -37,7 +37,7 @@ Flow:
 1. Browser uploads WAV + settings to `/api/process`
 2. Backend validates input + reads audio
 3. Segmentation detects active regions separated by configurable silence
-4. Each region is exported as `shot_001.wav`, `shot_002.wav`, etc.
+4. Each region is auto-classified and exported with informative names like `kick_dark_128ms_001.wav`, `snare_mid_094ms_002.wav`, etc.
 5. Files are zipped and returned as a downloadable response
 
 ## Features
@@ -67,6 +67,10 @@ Flow:
   - upload size limit (80MB)
   - temporary workspace cleanup
   - logging + exception handling
+- Fully automatic smart naming:
+  - Classifies one-shots into families (`kick`, `snare`, `hat`, `tom`, `perc`, `clave`, `pad`, `noise`)
+  - Adds brightness tag (`dark`, `mid`, `bright`) and slice duration to each filename
+  - No manual naming step needed
 - Optional **near-duplicate exclusion**: compares each slice to earlier kept slices using (1) peak-normalized waveform with small time alignment (best Pearson |r|), and (2) **spectral cosine** on log magnitude bins so similar samples still match when the time-domain correlation is a bit low. Disabled by default so intentional repeats are kept unless you enable it in Advanced settings.
 
 **Dedupe tuning — remove more duplicates:** lower **waveform |r|** (e.g. `0.82`–`0.86`), lower **spectral match** (e.g. `0.85`–`0.88`), lower **min waveform for spectral rule** slightly (e.g. `0.68`–`0.72`), and/or lower **envelope prefilter** (e.g. `0.50`) so more pairs are fully compared. **If different hits get merged:** raise waveform and spectral thresholds and/or raise **envelope prefilter** to reduce comparisons.
@@ -132,6 +136,7 @@ Response:
   - `X-Detected-Slices`
   - `X-Exported-Filenames`
   - `X-Discarded-Duplicates` (count dropped as duplicates when `dedupe` is enabled)
+  - `X-Detected-Labels` (comma-separated detected sound-family labels)
 
 ## Extensibility notes
 
