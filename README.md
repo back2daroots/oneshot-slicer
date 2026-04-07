@@ -1,6 +1,9 @@
 # One-shot WAV Slicer (Local-first)
 
-Local-first web app that accepts one WAV file containing multiple one-shot sounds, detects slices using silence/transient-style envelope analysis, exports each slice as an individual WAV, and returns a ZIP for download.
+Local-first web app that accepts one WAV file and can either:
+- auto-slice **one-shots** by silence/transient analysis, or
+- auto-slice fixed-length **loops** (same BPM/step grid),
+then export slices as WAV files in a downloadable ZIP.
 
 ## Publish to GitHub
 
@@ -36,13 +39,17 @@ This project is licensed under the MIT License — see [LICENSE](LICENSE).
 Flow:
 1. Browser uploads WAV + settings to `/api/process`
 2. Backend validates input + reads audio
-3. Segmentation detects active regions separated by configurable silence
-4. Each region is auto-classified and exported with informative names like `kick_dark_128ms_001.wav`, `snare_mid_094ms_002.wav`, etc.
+3. In `oneshot` mode, segmentation detects active regions separated by configurable silence
+4. In `loop` mode, segmentation slices fixed windows from BPM + steps (with optional auto-offset detection)
+5. Each region is exported with informative names like `kick_dark_128ms_001.wav` (oneshot) or `loop_120bpm_32step_001.wav` (loop mode)
 5. Files are zipped and returned as a downloadable response
 
 ## Features
 
 - WAV upload and processing in browser
+- Two slicing modes:
+  - `oneshot`: silence/transient-based one-shot detection
+  - `loop`: fixed BPM/step loop slicing for continuous loop packs
 - Configurable detection:
   - `silence_threshold_db`
   - `min_silence_ms`
@@ -64,7 +71,7 @@ Flow:
   - ZIP download button
 - Robustness:
   - file type validation
-  - upload size limit (80MB)
+  - upload size limit (200MB)
   - temporary workspace cleanup
   - logging + exception handling
 - Fully automatic smart naming:
@@ -129,6 +136,13 @@ python -m pytest -q
 - `dedupe_prefilter_threshold` (float, default `0.58`, range `0.35`–`0.95`) — envelope fingerprint gate before full compare (lower = more aggressive)
 - `dedupe_spectral_threshold` (float, default `0.90`, range `0.5`–`1`) — spectral cosine threshold for the secondary duplicate rule
 - `dedupe_spectral_min_waveform` (float, default `0.74`, range `0.5`–`0.99`) — minimum waveform |r| when using the spectral rule
+- `mode` (`oneshot` or `loop`, default `oneshot`)
+- `bpm` (float, loop mode, default `120`)
+- `steps_per_loop` (int, loop mode, default `32`)
+- `steps_per_beat` (int, loop mode, default `4`)
+- `auto_offset` (bool, loop mode, default `true`) — tries to align loop start for cleaner boundaries
+- `max_offset_ms` (float, loop mode, default `500`)
+- `min_last_loop_ratio` (float, loop mode, default `0.9`) — exports last partial loop if long enough
 
 Response:
 - `application/zip` download (`one_shots.zip`)
@@ -137,6 +151,8 @@ Response:
   - `X-Exported-Filenames`
   - `X-Discarded-Duplicates` (count dropped as duplicates when `dedupe` is enabled)
   - `X-Detected-Labels` (comma-separated detected sound-family labels)
+  - `X-Mode`
+  - `X-Loop-Offset-Ms` (in loop mode)
 
 ## Extensibility notes
 

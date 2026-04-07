@@ -18,6 +18,13 @@
           <span>WAV file</span>
           <input id="wav-file" type="file" accept=".wav,audio/wav" required />
         </label>
+        <label class="field">
+          <span>Mode</span>
+          <select id="mode-select" name="mode">
+            <option value="oneshot" selected>One-shots (silence/transient detect)</option>
+            <option value="loop">Loops (fixed BPM/steps)</option>
+          </select>
+        </label>
 
         <details>
           <summary>Advanced settings</summary>
@@ -78,6 +85,30 @@
               <span>Dedupe max time align (ms, 0–200)</span>
               <input name="dedupe_max_lag_ms" type="number" value="10" min="0" max="200" step="1" />
             </label>
+            <label class="field">
+              <span>Loop BPM</span>
+              <input name="bpm" type="number" value="120" min="1" step="0.01" />
+            </label>
+            <label class="field">
+              <span>Loop steps per loop</span>
+              <input name="steps_per_loop" type="number" value="32" min="1" />
+            </label>
+            <label class="field">
+              <span>Steps per beat</span>
+              <input name="steps_per_beat" type="number" value="4" min="1" />
+            </label>
+            <label class="checkbox">
+              <input name="auto_offset" type="checkbox" checked />
+              <span>Auto-detect loop start offset</span>
+            </label>
+            <label class="field">
+              <span>Max offset search (ms)</span>
+              <input name="max_offset_ms" type="number" value="500" min="0" max="5000" />
+            </label>
+            <label class="field">
+              <span>Min last loop ratio (0.5–1)</span>
+              <input name="min_last_loop_ratio" type="number" value="0.9" min="0.5" max="1" step="0.01" />
+            </label>
           </div>
         </details>
 
@@ -91,6 +122,7 @@
         <h2>Result</h2>
         <p id="slice-count"></p>
         <p id="dedupe-info" class="small hidden"></p>
+        <p id="loop-info" class="small hidden"></p>
         <p id="labels-info" class="small hidden"></p>
         <p id="filenames" class="small"></p>
         <a id="download-link" class="button" download="one_shots.zip">Download ZIP</a>

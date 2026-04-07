@@ -1,12 +1,15 @@
 import numpy as np
+import soundfile as sf
 
 from app.services.segmentation import (
+    LoopSegmentationConfig,
     SegmentationConfig,
     _build_auto_filename,
     _classify_sound_family,
     _extract_features,
     dedupe_slice_ranges,
     detect_slices,
+    segment_loops_wav_file,
 )
 
 
@@ -119,3 +122,23 @@ def test_classifier_distinguishes_kick_and_hat_like_tones() -> None:
 
     assert kick_label in {"kick", "tom"}
     assert hat_label in {"hat", "clave", "perc"}
+
+
+def test_loop_segmentation_slices_fixed_windows(tmp_path) -> None:
+    sr = 44100
+    loop_len_s = 4.0  # 32 steps at 120 BPM with 4 steps/beat
+    t = np.linspace(0, loop_len_s, int(loop_len_s * sr), endpoint=False)
+    base = (0.45 * np.sin(2 * np.pi * 110 * t)).astype(np.float32)
+    audio = np.concatenate([base, base, base])
+    stereo = np.stack([audio, audio], axis=1)
+
+    in_path = tmp_path / "loops.wav"
+    out_dir = tmp_path / "out"
+    sf.write(str(in_path), stereo, sr)
+
+    cfg = LoopSegmentationConfig(bpm=120.0, steps_per_loop=32, auto_offset=False)
+    files, offset_ms = segment_loops_wav_file(in_path, out_dir, cfg)
+
+    assert len(files) == 3
+    assert int(round(offset_ms)) == 0
+    assert files[0].name.startswith("loop_120bpm_32step_001")

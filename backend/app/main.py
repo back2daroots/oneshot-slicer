@@ -11,9 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.services.segmentation import SegmentationConfig, segment_wav_file
+from app.services.segmentation import (
+    LoopSegmentationConfig,
+    SegmentationConfig,
+    segment_loops_wav_file,
+    segment_wav_file,
+)
 
-MAX_UPLOAD_SIZE_BYTES = 80 * 1024 * 1024
+MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".wav"}
 
 logging.basicConfig(
@@ -55,6 +60,7 @@ def _is_supported_wav(file: UploadFile) -> bool:
 @app.post("/api/process")
 async def process_wav(
     file: UploadFile = File(...),
+    mode: str = Form("oneshot"),
     silence_threshold_db: float = Form(-40.0),
     min_silence_ms: int = Form(80),
     min_clip_ms: int = Form(25),
@@ -69,11 +75,19 @@ async def process_wav(
     dedupe_prefilter_threshold: float = Form(0.58),
     dedupe_spectral_threshold: float = Form(0.90),
     dedupe_spectral_min_waveform: float = Form(0.74),
+    bpm: float = Form(120.0),
+    steps_per_loop: int = Form(32),
+    steps_per_beat: int = Form(4),
+    auto_offset: bool = Form(True),
+    max_offset_ms: float = Form(500.0),
+    min_last_loop_ratio: float = Form(0.9),
 ) -> FileResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename.")
     if not _is_supported_wav(file):
         raise HTTPException(status_code=400, detail="Only WAV files are supported.")
+    if mode not in {"oneshot", "loop"}:
+        raise HTTPException(status_code=400, detail="mode must be either 'oneshot' or 'loop'.")
     if not 0.5 < dedupe_correlation_threshold <= 1.0:
         raise HTTPException(
             status_code=400,
@@ -109,6 +123,17 @@ async def process_wav(
             status_code=400,
             detail="dedupe_spectral_min_waveform must be between 0.5 and 0.99.",
         )
+    if bpm <= 0:
+        raise HTTPException(status_code=400, detail="bpm must be greater than 0.")
+    if steps_per_loop <= 0 or steps_per_beat <= 0:
+        raise HTTPException(status_code=400, detail="steps_per_loop and steps_per_beat must be positive.")
+    if max_offset_ms < 0 or max_offset_ms > 5000:
+        raise HTTPException(status_code=400, detail="max_offset_ms must be between 0 and 5000.")
+    if min_last_loop_ratio < 0.5 or min_last_loop_ratio > 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="min_last_loop_ratio must be between 0.5 and 1.0.",
+        )
 
     contents = await file.read()
     if len(contents) > MAX_UPLOAD_SIZE_BYTES:
@@ -117,24 +142,7 @@ async def process_wav(
             detail=f"File is too large. Max upload size is {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
         )
 
-    config = SegmentationConfig(
-        silence_threshold_db=silence_threshold_db,
-        min_silence_ms=min_silence_ms,
-        min_clip_ms=min_clip_ms,
-        padding_ms=padding_ms,
-        normalize=normalize,
-        min_peak_db=min_peak_db,
-        dedupe=dedupe,
-        dedupe_correlation_threshold=dedupe_correlation_threshold,
-        dedupe_max_length_ratio=dedupe_max_length_ratio,
-        dedupe_compare_points=dedupe_compare_points,
-        dedupe_max_lag_ms=dedupe_max_lag_ms,
-        dedupe_prefilter_threshold=dedupe_prefilter_threshold,
-        dedupe_spectral_threshold=dedupe_spectral_threshold,
-        dedupe_spectral_min_waveform=dedupe_spectral_min_waveform,
-    )
-
-    logger.info("Processing uploaded file '%s' with config: %s", file.filename, config)
+    logger.info("Processing uploaded file '%s' in mode=%s", file.filename, mode)
 
     temp_dir = tempfile.TemporaryDirectory(prefix="oneshot_slicer_")
     work_dir = Path(temp_dir.name)
@@ -144,7 +152,38 @@ async def process_wav(
 
     try:
         input_wav.write_bytes(contents)
-        exported_files, discarded_dupes, labels = segment_wav_file(input_wav, slices_dir, config)
+        if mode == "loop":
+            loop_config = LoopSegmentationConfig(
+                bpm=bpm,
+                steps_per_loop=steps_per_loop,
+                steps_per_beat=steps_per_beat,
+                auto_offset=auto_offset,
+                max_offset_ms=max_offset_ms,
+                min_last_loop_ratio=min_last_loop_ratio,
+                normalize=normalize,
+            )
+            exported_files, used_offset_ms = segment_loops_wav_file(input_wav, slices_dir, loop_config)
+            discarded_dupes = 0
+            labels = ["loop"] * len(exported_files)
+        else:
+            config = SegmentationConfig(
+                silence_threshold_db=silence_threshold_db,
+                min_silence_ms=min_silence_ms,
+                min_clip_ms=min_clip_ms,
+                padding_ms=padding_ms,
+                normalize=normalize,
+                min_peak_db=min_peak_db,
+                dedupe=dedupe,
+                dedupe_correlation_threshold=dedupe_correlation_threshold,
+                dedupe_max_length_ratio=dedupe_max_length_ratio,
+                dedupe_compare_points=dedupe_compare_points,
+                dedupe_max_lag_ms=dedupe_max_lag_ms,
+                dedupe_prefilter_threshold=dedupe_prefilter_threshold,
+                dedupe_spectral_threshold=dedupe_spectral_threshold,
+                dedupe_spectral_min_waveform=dedupe_spectral_min_waveform,
+            )
+            exported_files, discarded_dupes, labels = segment_wav_file(input_wav, slices_dir, config)
+            used_offset_ms = 0.0
         if not exported_files:
             raise HTTPException(
                 status_code=422,
@@ -163,6 +202,8 @@ async def process_wav(
             "X-Exported-Filenames": ",".join(path.name for path in exported_files),
             "X-Discarded-Duplicates": str(discarded_dupes),
             "X-Detected-Labels": ",".join(labels),
+            "X-Mode": mode,
+            "X-Loop-Offset-Ms": str(int(round(used_offset_ms))) if mode == "loop" else "0",
         }
 
         response = FileResponse(

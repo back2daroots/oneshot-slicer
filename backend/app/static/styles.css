@@ -46,7 +46,8 @@ h1 {
 }
 
 input[type="file"],
-input[type="number"] {
+input[type="number"],
+select {
   width: 100%;
   border-radius: 8px;
   border: 1px solid #495173;

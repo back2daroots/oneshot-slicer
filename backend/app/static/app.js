@@ -1,10 +1,12 @@
 const form = document.getElementById("upload-form");
 const fileInput = document.getElementById("wav-file");
+const modeSelect = document.getElementById("mode-select");
 const statusEl = document.getElementById("status");
 const processBtn = document.getElementById("process-btn");
 const resultEl = document.getElementById("result");
 const sliceCountEl = document.getElementById("slice-count");
 const dedupeInfoEl = document.getElementById("dedupe-info");
+const loopInfoEl = document.getElementById("loop-info");
 const labelsInfoEl = document.getElementById("labels-info");
 const filenamesEl = document.getElementById("filenames");
 const downloadLink = document.getElementById("download-link");
@@ -23,6 +25,8 @@ function resetResult() {
   sliceCountEl.textContent = "";
   dedupeInfoEl.textContent = "";
   dedupeInfoEl.classList.add("hidden");
+  loopInfoEl.textContent = "";
+  loopInfoEl.classList.add("hidden");
   labelsInfoEl.textContent = "";
   labelsInfoEl.classList.add("hidden");
   filenamesEl.textContent = "";
@@ -99,7 +103,7 @@ form.addEventListener("submit", async (event) => {
 
   const settings = new FormData(form);
   for (const [key, value] of settings.entries()) {
-    if (key === "normalize" || key === "dedupe") {
+    if (key === "normalize" || key === "dedupe" || key === "auto_offset") {
       formData.append(key, "true");
     } else if (typeof value === "string") {
       formData.append(key, value);
@@ -111,6 +115,10 @@ form.addEventListener("submit", async (event) => {
   if (!settings.has("dedupe")) {
     formData.append("dedupe", "false");
   }
+  if (!settings.has("auto_offset")) {
+    formData.append("auto_offset", "false");
+  }
+  formData.set("mode", modeSelect.value || "oneshot");
 
   processBtn.disabled = true;
   setStatus("Processing audio and creating ZIP...");
@@ -130,6 +138,8 @@ form.addEventListener("submit", async (event) => {
     const blob = await response.blob();
     const sliceCount = response.headers.get("X-Detected-Slices") || "Unknown";
     const discardedDupes = response.headers.get("X-Discarded-Duplicates");
+    const mode = response.headers.get("X-Mode") || "oneshot";
+    const loopOffsetMs = response.headers.get("X-Loop-Offset-Ms") || "0";
     const labelsCsv = response.headers.get("X-Detected-Labels") || "";
     const filenames = response.headers.get("X-Exported-Filenames") || "";
 
@@ -142,6 +152,12 @@ form.addEventListener("submit", async (event) => {
       dedupeInfoEl.classList.remove("hidden");
     } else {
       dedupeInfoEl.classList.add("hidden");
+    }
+    if (mode === "loop") {
+      loopInfoEl.textContent = `Loop mode active. Estimated start offset: ${loopOffsetMs} ms.`;
+      loopInfoEl.classList.remove("hidden");
+    } else {
+      loopInfoEl.classList.add("hidden");
     }
     if (labelsCsv) {
       const labels = labelsCsv.split(",").filter(Boolean);

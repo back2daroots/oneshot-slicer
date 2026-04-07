@@ -37,6 +37,17 @@ class SegmentationConfig:
 
 
 @dataclass
+class LoopSegmentationConfig:
+    bpm: float = 120.0
+    steps_per_loop: int = 32
+    steps_per_beat: int = 4
+    auto_offset: bool = True
+    max_offset_ms: float = 500.0
+    min_last_loop_ratio: float = 0.9
+    normalize: bool = False
+
+
+@dataclass
 class SliceRange:
     start: int
     end: int
@@ -189,6 +200,11 @@ def _brightness_tag(features: Dict[str, float]) -> str:
 
 def _build_auto_filename(label: str, brightness: str, duration_ms: int, idx: int) -> str:
     return f"{label}_{brightness}_{duration_ms:03d}ms_{idx:03d}.wav"
+
+
+def _build_loop_filename(bpm: float, steps_per_loop: int, idx: int) -> str:
+    bpm_str = f"{int(round(bpm))}" if abs(bpm - round(bpm)) < 1e-6 else f"{bpm:.2f}"
+    return f"loop_{bpm_str}bpm_{steps_per_loop}step_{idx:03d}.wav"
 
 
 def _waveform_correlation(a: np.ndarray, b: np.ndarray) -> float:
@@ -399,3 +415,96 @@ def segment_wav_file(
         labels.append(label)
 
     return exported, discarded_dupes, labels
+
+
+def _find_best_loop_offset(
+    audio: np.ndarray,
+    sample_rate: int,
+    loop_samples: int,
+    max_offset_samples: int,
+) -> int:
+    if audio.shape[0] < loop_samples or loop_samples < 2:
+        return 0
+
+    mono_abs = np.max(np.abs(audio), axis=1)
+    envelope = _smooth_envelope(mono_abs, sample_rate)
+    search_end = max(0, min(max_offset_samples, loop_samples - 1))
+    stride = max(1, loop_samples // 128)
+
+    best_offset = 0
+    best_score = -1.0
+    for offset in range(0, search_end + 1, stride):
+        idx = np.arange(offset, envelope.shape[0], loop_samples)
+        if idx.shape[0] < 2:
+            continue
+        score = float(np.mean(envelope[idx]))
+        if score > best_score:
+            best_score = score
+            best_offset = offset
+    return int(best_offset)
+
+
+def segment_loops_wav_file(
+    input_wav_path: Path,
+    output_dir: Path,
+    config: LoopSegmentationConfig,
+) -> Tuple[List[Path], float]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    data, sample_rate = sf.read(str(input_wav_path), always_2d=True, dtype="float32")
+    info = sf.info(str(input_wav_path))
+    n_samples = data.shape[0]
+    if n_samples == 0:
+        return [], 0
+
+    beats_per_loop = config.steps_per_loop / float(config.steps_per_beat)
+    loop_duration_s = beats_per_loop * 60.0 / config.bpm
+    loop_samples = max(1, int(round(loop_duration_s * sample_rate)))
+    max_offset_samples = int(max(0.0, config.max_offset_ms) * sample_rate / 1000.0)
+    offset = (
+        _find_best_loop_offset(data, sample_rate, loop_samples, max_offset_samples)
+        if config.auto_offset
+        else 0
+    )
+
+    exported: List[Path] = []
+    pos = offset
+    idx = 1
+    while pos + loop_samples <= n_samples:
+        clip = data[pos : pos + loop_samples]
+        if config.normalize:
+            peak = float(np.max(np.abs(clip)))
+            if peak > 0:
+                clip = np.clip(clip / peak * 0.98, -1.0, 1.0)
+        out_name = _build_loop_filename(config.bpm, config.steps_per_loop, idx)
+        out_path = output_dir / out_name
+        sf.write(
+            str(out_path),
+            clip,
+            sample_rate,
+            format=info.format if info.format else "WAV",
+            subtype=info.subtype if info.subtype else None,
+        )
+        exported.append(out_path)
+        idx += 1
+        pos += loop_samples
+
+    tail = n_samples - pos
+    if loop_samples > 0 and tail / loop_samples >= config.min_last_loop_ratio:
+        clip = data[pos:n_samples]
+        if config.normalize:
+            peak = float(np.max(np.abs(clip)))
+            if peak > 0:
+                clip = np.clip(clip / peak * 0.98, -1.0, 1.0)
+        out_name = _build_loop_filename(config.bpm, config.steps_per_loop, idx)
+        out_path = output_dir / out_name
+        sf.write(
+            str(out_path),
+            clip,
+            sample_rate,
+            format=info.format if info.format else "WAV",
+            subtype=info.subtype if info.subtype else None,
+        )
+        exported.append(out_path)
+
+    offset_ms = (offset * 1000.0) / float(sample_rate)
+    return exported, offset_ms
